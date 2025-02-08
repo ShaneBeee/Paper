@@ -242,10 +242,10 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
     }
 
     @Override
-    public boolean teleportVanilla(Location location, TeleportCause cause, TeleportFlag... flags) {
+    public boolean teleport(Location location, TeleportCause cause, io.papermc.paper.entity.TeleportFlag... flags) {
         Preconditions.checkArgument(location != null, "location cannot be null");
         if (this.isInsideVehicle()) {
-            return this.getVehicle().teleportVanilla(location, cause, flags);
+            return this.getVehicle().teleport(location, cause, flags);
         }
         World world = location.getWorld();
         ServerLevel level = world != null ? ((CraftWorld) world).getHandle() : (ServerLevel) this.entity.level();
@@ -269,63 +269,6 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
             TeleportTransition.DO_NOTHING,
             cause);
         return this.entity.teleport(transition) != null;
-    }
-
-    @Override
-    public boolean teleport(Location location, TeleportCause cause, io.papermc.paper.entity.TeleportFlag... flags) {
-        // Paper end
-        Preconditions.checkArgument(location != null, "location cannot be null");
-        location.checkFinite();
-        // Paper start - Teleport passenger API
-        Set<io.papermc.paper.entity.TeleportFlag> flagSet = new HashSet<>(List.of(flags)); // Wrap into list while multiple old flags link to the same new one
-        boolean dismount = !flagSet.contains(io.papermc.paper.entity.TeleportFlag.EntityState.RETAIN_VEHICLE);
-        boolean retainPassengers = flagSet.contains(io.papermc.paper.entity.TeleportFlag.EntityState.RETAIN_PASSENGERS);
-        // Don't allow teleporting between worlds while keeping passengers
-        if (flagSet.contains(io.papermc.paper.entity.TeleportFlag.EntityState.RETAIN_PASSENGERS) && this.entity.isVehicle() && location.getWorld() != this.getWorld()) {
-            return false;
-        }
-
-        // Don't allow to teleport between worlds if remaining on vehicle
-        if (!dismount && this.entity.isPassenger() && location.getWorld() != this.getWorld()) {
-            return false;
-        }
-        // Paper end
-
-        if ((!retainPassengers && this.entity.isVehicle()) || this.entity.isRemoved()) { // Paper - Teleport passenger API
-            return false;
-        }
-
-        // Paper start - fix teleport event not being called
-        org.bukkit.event.entity.EntityTeleportEvent event = new org.bukkit.event.entity.EntityTeleportEvent(
-            this, this.getLocation(), location);
-        // cancelling the event is handled differently for players and entities,
-        // entities just stop teleporting, players will still teleport to the "from" location of the event
-        if (!event.callEvent() || event.getTo() == null) {
-            return false;
-        }
-        location = event.getTo();
-        // Paper end
-
-        // If this entity is riding another entity, we must dismount before teleporting.
-        if (dismount) this.entity.stopRiding(); // Paper - Teleport passenger API
-
-        // Let the server handle cross world teleports
-        if (location.getWorld() != null && !location.getWorld().equals(this.getWorld())) {
-            // Prevent teleportation to an other world during world generation
-            Preconditions.checkState(!this.entity.generation, "Cannot teleport entity to an other world during world generation");
-            this.entity.teleport(new TeleportTransition(((CraftWorld) location.getWorld()).getHandle(), CraftLocation.toVec3D(location), Vec3.ZERO, location.getPitch(), location.getYaw(), Set.of(), TeleportTransition.DO_NOTHING, TeleportCause.PLUGIN));
-            return true;
-        }
-
-        // entity.setLocation() throws no event, and so cannot be cancelled
-        entity.moveTo(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch()); // Paper - use proper moveTo, as per vanilla teleporting
-        // SPIGOT-619: Force sync head rotation also
-        this.entity.setYHeadRot(location.getYaw());
-
-        // Ensure passengers of entity are teleported
-        if (retainPassengers && this.entity.isVehicle()) this.entity.teleportPassengers();
-
-        return true;
     }
 
     @Override
